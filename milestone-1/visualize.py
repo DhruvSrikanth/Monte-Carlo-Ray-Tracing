@@ -26,7 +26,7 @@ def generate_plots(filename):
     plt.xlabel('X')
     plt.ylabel('Z')
     plt.colorbar(orientation='vertical')
-    plt.title('Conjugate Gradient Plot')
+    plt.title('Ray Tracing Plot')
 
     plt.savefig('.' + filename.split('.')[1] + '.png')
     
