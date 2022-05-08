@@ -24,7 +24,7 @@ def generate_plots(filename):
     plt.clf()
     plt.imshow(data, cmap=plt.cm.get_cmap('binary_r'))
     plt.xlabel('X')
-    plt.ylabel('Y')
+    plt.ylabel('Z')
     plt.colorbar(orientation='vertical')
     plt.title('Conjugate Gradient Plot')
 
