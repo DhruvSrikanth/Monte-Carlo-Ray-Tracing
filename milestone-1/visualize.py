@@ -32,7 +32,34 @@ def generate_plots(filename):
     
     plt.close()
 
-
+def generate_movie():
+    '''
+    Plot and save the data.
+    '''
+    imgs = []
+    step = 100
+    NT = len(os.listdir('./output/'))*step
+    for i in range(0, NT, step):
+        try:
+            data = read_file("./output/output_" + str(i) + ".txt")
+            imgs.append(data)
+        except FileNotFoundError:
+            continue
+    
+    fig = plt.figure()
+    viewer = fig.add_subplot(111)
+    plt.ion() # Turns interactive mode on (probably unnecessary)
+    fig.show() # Initially shows the figure
+    for i in range(len(imgs)):
+        print("Plotting Simulation Sample : " + str(i+1))
+        viewer.clear() # Clears the previous image
+        viewer.imshow(imgs[i][1]) # Loads the new image
+        plt.pause(.1) # Delay in seconds
+        fig.canvas.draw() # Draws the image to the screen
 
 if __name__ == '__main__':
+    gen_mov = False
     generate_plots('./output/output.txt')
+
+    if gen_mov:
+        generate_movie()

@@ -157,8 +157,8 @@ void ray_tracing(int N_rays, int N_gridpoints) {
         b = max(0.0, vec_dotp(S, N));
 
         // Compute the grid point
-        int i = (W.x + w_max) / (2*w_max) * N_gridpoints;
-        int j = (W.z + w_max) / (2*w_max) * N_gridpoints;
+        int i = (W.z + w_max) / (2*w_max) * N_gridpoints;
+        int j = (W.x + w_max) / (2*w_max) * N_gridpoints;
         int idx_1d = i * N_gridpoints + j;    
         grid[idx_1d] += b;
 
