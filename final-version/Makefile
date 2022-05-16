@@ -1,13 +1,17 @@
 # Environment variables
 PYTHON = python3
 GCC = g++-11
+CUDA = nvcc
 
 # Checks
 VISUALIZE = "true"
 
-# Input to cpp
+# Input to cu
 N_rays = 1e7
 N_gridpoints = 1000
+
+# GPU config
+n_threads_per_block = 256
 
 # Run sequence
 TARGETS = output simulation visualize clean_runtime
@@ -19,13 +23,13 @@ output:
 	mkdir output
 
 # Compile the following
-ray_tracing: ./ray_tracing.cpp
-	$(GCC) ./ray_tracing.cpp -O3 -ffast-math -march=native -mtune=native -lm
+ray_tracing: ./ray_tracing.cu
+	$(CUDA) ./ray_tracing.cu -o ./ray_tracing -O3 -ffast-math -march=native -mtune=native -lm
 
 # Execute the following
 simulation: ./ray_tracing
 	@echo "Simulating...\n"
-	./ray_tracing $(N_rays) $(N_gridpoints)
+	./ray_tracing $(N_rays) $(N_gridpoints) $(n_threads_per_block)
 	@echo "\nSimulation Complete!\n"
 
 # Visualize simulation

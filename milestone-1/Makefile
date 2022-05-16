@@ -20,7 +20,7 @@ output:
 
 # Compile the following
 ray_tracing: ./ray_tracing.cpp
-	$(GCC) ./ray_tracing.cpp -O3 -ffast-math -march=native -mtune=native -lm
+	$(GCC) ./ray_tracing.cpp -o ./ray_tracing -O3 -ffast-math -march=native -mtune=native -lm
 
 # Execute the following
 simulation: ./ray_tracing
