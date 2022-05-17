@@ -125,9 +125,6 @@ __global__ void ray_tracing(double* grid, int N_rays, int N_gridpoints) {
     // Initialize points
     Point W, V, I, N, S;
 
-    int per_point_threads = 3;
-    int per_point_blocks = 1;
-
     // Initialize simulation parameters
     double w_max = 10.0;
     Point L = {4,4,-1};
@@ -138,57 +135,30 @@ __global__ void ray_tracing(double* grid, int N_rays, int N_gridpoints) {
     double t;
     double b;
 
-    // CUDA timer
-    cudaEvent_t start_device, stop_device;  
-    double time_device;
-
-    // Create timers
-    cudaEventCreate(&start_device);
-    cudaEventCreate(&stop_device);
-
-    // Index variables
-    int starting_index = blockIdx.x * blockDim.x + threadIdx.x;
-    int stride = blockDim.x * gridDim.x;
-
-    for (int n = starting_index; n < N_rays; n+=stride) {
-
-        // Start timer
-        cudaEventRecord(start_device, 0);  
-
-        while (true) {
-            // sample random v from unit sphere
-            V = direction_sampling<<<per_point_blocks, per_point_threads>>>();
-            W = vec_scale<<<per_point_blocks, per_point_threads>>>(V, Wy / V.y);
-            bool condition = abs(W.x) < w_max && abs(W.z) < w_max && pow(vec_dotp<<<per_point_blocks, per_point_threads>>>(V, C), 2) + r*r - vec_dotp<<<per_point_blocks, per_point_threads>>>(C, C) > 0;
-            if (condition) {
-                break;
-            }
+    while (true) {
+        // sample random v from unit sphere
+        V = direction_sampling();
+        W = vec_scale(V, Wy / V.y);
+        bool condition = abs(W.x) < w_max && abs(W.z) < w_max && pow(vec_dotp(V, C), 2) + r*r - vec_dotp(C, C) > 0;
+        if (condition) {
+            break;
         }
-
-        t = vec_dotp<<<per_point_blocks, per_point_threads>>>(V,C) - sqrt(pow(vec_dotp<<<per_point_blocks, per_point_threads>>>(V,C), 2) + r*r - vec_dotp<<<per_point_blocks, per_point_threads>>>(C, C));
-        I = vec_scale<<<per_point_blocks, per_point_threads>>>(V, t);
-        N = vec_direction<<<per_point_blocks, per_point_threads>>>(C, I);
-        S = vec_direction<<<per_point_blocks, per_point_threads>>>(I, L);
-        b = max(0.0, vec_dotp<<<per_point_blocks, per_point_threads>>>(S, N));
-
-        // Compute the grid point indices
-        int i = (W.z + w_max) / (2*w_max) * N_gridpoints;
-        int j = (W.x + w_max) / (2*w_max) * N_gridpoints;
-        int idx_1d_local = i * N_gridpoints + j;
-        // Update the grid point
-        // TODO: make this thread safe
-        grid[idx_1d_local] += b;
-
-        // Stop timer
-        cudaEventRecord(stop_device, 0);
-        cudaEventSynchronize(stop_device);
-        cudaEventElapsedTime(&time_device, start_device, stop_device);
-        cout << "Iteration: " << n << " - Grind Rate: " << floor(1e3/time_device) << " rays/sec" << endl;
     }
 
-    // Release the memory for the timer
-    cudaEventDestroy(start_device);
-    cudaEventDestroy(stop_device);
+    t = vec_dotp(V,C) - sqrt(pow(vec_dotp(V,C), 2) + r*r - vec_dotp(C, C));
+    I = vec_scale(V, t);
+    N = vec_direction(C, I);
+    S = vec_direction(I, L);
+    b = max(0.0, vec_dotp(S, N));
+
+    // Compute the grid point indices
+    int i = (W.z + w_max) / (2*w_max) * N_gridpoints;
+    int j = (W.x + w_max) / (2*w_max) * N_gridpoints;
+    int idx_1d_local = i * N_gridpoints + j;
+
+    // Update the grid point
+    // TODO: Use cuda atomic add operation to update the grid point
+    grid[idx_1d_local] += b;
 }
 
 int main(int argc, char** argv) {
@@ -197,11 +167,8 @@ int main(int argc, char** argv) {
     int N_gridpoints = stoi(argv[2]);
     int n_threads_per_block = stoi(argv[3]);
 
-    int n_blocks = MIN(N_gridpoints*N_gridpoints/nthreads_per_block + 1, MAX_BLOCKS_PER_DIM);
-
-    // CUDA timer
-    cudaEvent_t start_device, stop_device;  
-    double time_device;
+    // Compute the number of blocks
+    int n_blocks = MIN(N_rays/nthreads_per_block + 1, MAX_BLOCKS_PER_DIM);
 
     cout << "Simulation Parameters:" << endl;
     cout << "Number of rays = " << N_rays << endl;
@@ -215,15 +182,44 @@ int main(int argc, char** argv) {
     double* grid = new double[N_gridpoints*N_gridpoints];
     create_contiguous_2d_array(grid, N_gridpoints*N_gridpoints);
 
-    // Allocate memory to the grid on the device
+    // Allocate memory for the number of rays, grid points, and grid
     double* grid_device;
-    cudaMalloc(&grid_device, N_gridpoints*N_gridpoints*sizeof(double));
+    int* N_rays_device;
+    int* N_gridpoints_device;
 
-    // Copy the grid to the device
+    cudaMalloc(&grid_device, N_gridpoints*N_gridpoints*sizeof(double));
+    cudaMalloc(&N_rays_device, sizeof(int));
+    cudaMalloc(&N_gridpoints_device, sizeof(int));
+
+    // Copy the params to the device
     cudaMemcpy(grid_device, grid, N_gridpoints*N_gridpoints*sizeof(double), cudaMemcpyHostToDevice);
+    cudaMemcpy(N_rays_device, &N_rays, sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(N_gridpoints_device, &N_gridpoints, sizeof(int), cudaMemcpyHostToDevice);
+    
+
+    // CUDA timer
+    cudaEvent_t start_device, stop_device;  
+    double time_device;
+
+    // Create timers
+    cudaEventCreate(&start_device);
+    cudaEventCreate(&stop_device);
+
+    // Start timer
+    cudaEventRecord(start_device, 0);  
     
     // Perform simulation
-    ray_tracing<<<n_blocks, n_threads_per_block>>>(grid_device, N_rays, N_gridpoints);
+    ray_tracing<<<n_blocks, n_threads_per_block>>>(grid_device, N_rays_device, N_gridpoints_device);
+
+    // Stop timer
+    cudaEventRecord(stop_device, 0);
+    cudaEventSynchronize(stop_device);
+    cudaEventElapsedTime(&time_device, start_device, stop_device);
+    cout << "Grind Rate: " << N_rays / floor(1e3/time_device) << " rays/sec" << endl;
+
+    // Release the memory for the timer
+    cudaEventDestroy(start_device);
+    cudaEventDestroy(stop_device);
     
     // Copy the grid from the device to the host
     cudaMemcpy(grid, grid_device, N_gridpoints*N_gridpoints*sizeof(double), cudaMemcpyDeviceToHost);
@@ -231,10 +227,13 @@ int main(int argc, char** argv) {
     // Write to file
     write_to_file(grid, "./output/output.txt", N_gridpoints*N_gridpoints, N_rays-1);
 
-    // Release the memory for the grid
+    // Release the memory for the grid, the number of rays, and the number of grid points
     cudaFree(grid_device); // Free the memory for the grid on the device
+    cudaFree(N_rays_device);
+    cudaFree(N_gridpoints_device);
     delete[] grid; // Free the memory for the grid on the host
 
     return 0;
 
 }
+
