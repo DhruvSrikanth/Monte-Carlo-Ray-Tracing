@@ -1,6 +1,5 @@
 #include <iostream>
 using namespace std;
-#include <chrono>
 #include <assert.h>
 #include <math.h>
 #include <fstream>
@@ -8,7 +7,7 @@ using namespace std;
 #include<cuda.h>
 #include<cuda_runtime.h>
 
-#define MAX_BLOCKS_PER_DIM 65535
+#define MAX_BLOCKS 2147483647
 #define MIN(a,b) (((a)<(b))?(a):(b))
 
 struct Point {
@@ -121,7 +120,7 @@ void create_contiguous_2d_array(double* mat, int N) {
     }
 }
 
-__global__ void ray_tracing(double* grid, int N_rays, int N_gridpoints) {
+__global__ void ray_tracing(double* grid, int N_gridpoints) {
     // Initialize points
     Point W, V, I, N, S;
 
@@ -157,8 +156,8 @@ __global__ void ray_tracing(double* grid, int N_rays, int N_gridpoints) {
     int idx_1d_local = i * N_gridpoints + j;
 
     // Update the grid point
-    // TODO: Use cuda atomic add operation to update the grid point
-    grid[idx_1d_local] += b;
+    atomicAdd(&grid[idx_1d_local], b);
+    // grid[idx_1d_local] += b; // For the serial version
 }
 
 int main(int argc, char** argv) {
@@ -168,7 +167,7 @@ int main(int argc, char** argv) {
     int n_threads_per_block = stoi(argv[3]);
 
     // Compute the number of blocks
-    int n_blocks = MIN(N_rays/nthreads_per_block + 1, MAX_BLOCKS_PER_DIM);
+    int n_blocks = MIN(N_rays/nthreads_per_block + 1, MAX_BLOCKS);
 
     cout << "Simulation Parameters:" << endl;
     cout << "Number of rays = " << N_rays << endl;
@@ -184,16 +183,13 @@ int main(int argc, char** argv) {
 
     // Allocate memory for the number of rays, grid points, and grid
     double* grid_device;
-    int* N_rays_device;
     int* N_gridpoints_device;
 
     cudaMalloc(&grid_device, N_gridpoints*N_gridpoints*sizeof(double));
-    cudaMalloc(&N_rays_device, sizeof(int));
     cudaMalloc(&N_gridpoints_device, sizeof(int));
 
     // Copy the params to the device
     cudaMemcpy(grid_device, grid, N_gridpoints*N_gridpoints*sizeof(double), cudaMemcpyHostToDevice);
-    cudaMemcpy(N_rays_device, &N_rays, sizeof(int), cudaMemcpyHostToDevice);
     cudaMemcpy(N_gridpoints_device, &N_gridpoints, sizeof(int), cudaMemcpyHostToDevice);
     
 
@@ -209,7 +205,7 @@ int main(int argc, char** argv) {
     cudaEventRecord(start_device, 0);  
     
     // Perform simulation
-    ray_tracing<<<n_blocks, n_threads_per_block>>>(grid_device, N_rays_device, N_gridpoints_device);
+    ray_tracing<<<n_blocks, n_threads_per_block>>>(grid_device, N_gridpoints_device);
 
     // Stop timer
     cudaEventRecord(stop_device, 0);
@@ -229,7 +225,6 @@ int main(int argc, char** argv) {
 
     // Release the memory for the grid, the number of rays, and the number of grid points
     cudaFree(grid_device); // Free the memory for the grid on the device
-    cudaFree(N_rays_device);
     cudaFree(N_gridpoints_device);
     delete[] grid; // Free the memory for the grid on the host
 
