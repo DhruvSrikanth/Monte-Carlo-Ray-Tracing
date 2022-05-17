@@ -12,6 +12,6 @@
 module load gcc
 module load cuda
 
-nvcc ./ray_tracing.cu -o ./ray_tracing.out -O3 -use_fast_math -extra-device-vectorization -lm -std=g++11
+nvcc ./ray_tracing.cu -o ./ray_tracing.out -O3 -use_fast_math -extra-device-vectorization -lm -std=c++11
 
 ./ray_tracing.out 1e7 1000 1000

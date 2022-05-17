@@ -21,7 +21,7 @@ void print_point(Point p) {
     cout << "(" << p.x << ", " << p.y << ", " << p.z << ")" << endl;
 }
 
-__global__ Point vec_add(Point p1, Point p2) {
+__device__ Point vec_add(Point p1, Point p2) {
     // Add two vectors
     Point res;
     res.x = p1.x + p2.x;
@@ -30,7 +30,7 @@ __global__ Point vec_add(Point p1, Point p2) {
     return res;
 }
 
-__global__ Point vec_scale(Point p, double scale) {
+__device__ Point vec_scale(Point p, double scale) {
     // Scale a vector
     Point res;
     res.x = p.x * scale;
@@ -39,14 +39,14 @@ __global__ Point vec_scale(Point p, double scale) {
     return res;
 }
 
-__global__ double vec_dotp(Point p1, Point p2) {
+__device__ double vec_dotp(Point p1, Point p2) {
     // Dot product of two vectors
     double res;
     res = p1.x * p2.x + p1.y * p2.y + p1.z * p2.z;
     return res;
 }
 
-__global__ Point vec_direction(Point p1, Point p2) {
+__device__ Point vec_direction(Point p1, Point p2) {
     // Direction of p2 from p1
     Point res;
     double magnitude = sqrt(pow(p2.x - p1.x, 2) + pow(p2.y - p1.y, 2) + pow(p2.z - p1.z, 2));
@@ -57,7 +57,7 @@ __global__ Point vec_direction(Point p1, Point p2) {
 }
 
 // TODO: Change to fast forwarding LCG PRNG
-__global__ Point direction_sampling() {
+__device__ Point direction_sampling() {
     Point V;
     random_device rd;
     default_random_engine eng(rd());
@@ -167,7 +167,7 @@ int main(int argc, char** argv) {
     int n_threads_per_block = stoi(argv[3]);
 
     // Compute the number of blocks
-    int n_blocks = MIN(N_rays/nthreads_per_block + 1, MAX_BLOCKS);
+    int n_blocks = MIN(N_rays/n_threads_per_block + 1, MAX_BLOCKS);
 
     cout << "Simulation Parameters:" << endl;
     cout << "Number of rays = " << N_rays << endl;
@@ -195,7 +195,7 @@ int main(int argc, char** argv) {
 
     // CUDA timer
     cudaEvent_t start_device, stop_device;  
-    double time_device;
+    float time_device;
 
     // Create timers
     cudaEventCreate(&start_device);
@@ -205,7 +205,7 @@ int main(int argc, char** argv) {
     cudaEventRecord(start_device, 0);  
     
     // Perform simulation
-    ray_tracing<<<n_blocks, n_threads_per_block>>>(grid_device, N_gridpoints_device);
+    ray_tracing<<<n_blocks, n_threads_per_block>>>(grid_device, *N_gridpoints_device);
 
     // Stop timer
     cudaEventRecord(stop_device, 0);
@@ -231,4 +231,3 @@ int main(int argc, char** argv) {
     return 0;
 
 }
-
