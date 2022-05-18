@@ -56,17 +56,40 @@ __device__ Point vec_direction(Point p1, Point p2) {
     return res;
 }
 
-// TODO: Change to fast forwarding LCG PRNG
-__device__ Point direction_sampling() {
-    Point V;
-    random_device rd;
-    default_random_engine eng(rd());
-    uniform_real_distribution<double> distr_psi(0, 2*M_PI);
-    uniform_real_distribution<double> distr_cos_theta(-1.0, 1.0);
+__device__ double LCG_random_double(uint64_t* seed) {
+    const uint64_t m = 9223372036854775808ULL; // 2ˆ63
+    const uint64_t a = 2806196910506780709ULL;
+    const uint64_t c = 1ULL;
+    *seed = (a * (*seed) + c ) % m;
+    return (double) (*seed ) / (double) m;
+}
 
-    double phi = distr_psi(eng);
-    double cos_theta = distr_cos_theta(eng);
+__device__ uint64_t fast_forward_LCG(uint64_t seed, uint64_t n) {
+    const uint64_t m = 9223372036854775808ULL; // 2ˆ63
+    uint64_t a = 2806196910506780709ULL;
+    uint64_t c = 1ULL;
+    n = n % m;
+    uint64_t a_new = 1;
+    uint64_t c_new = 0;
+    while (n >0) {
+        if (n & 1) {
+            a_new *= a;
+            c_new = c_new * a + c;
+        }
+        c *= ( a + 1);
+        a *= a;
+        n >>= 1;
+    }
+    return (a_new * seed + c_new) % m;
+}
+
+__device__ Point direction_sampling(uint64_t seed) {
+    Point V;
+
+    double phi = 2*M_PI*LCG_random_double(&seed); // 0 ~ 2*pi
+    double cos_theta = 2*LCG_random_double(&seed) - 1; // -1 ~ 1
     double sin_theta = sqrt(1 - pow(cos_theta, 2));
+    
     V.x = sin_theta * cos(phi);
     V.y = sin_theta * sin(phi);
     V.z = cos_theta;
@@ -120,7 +143,7 @@ void create_contiguous_2d_array(double* mat, int N) {
     }
 }
 
-__global__ void ray_tracing(double* grid, int N_gridpoints) {
+__global__ void ray_tracing(double* grid, int* N_gridpoints) {
     // Initialize points
     Point W, V, I, N, S;
 
@@ -134,14 +157,21 @@ __global__ void ray_tracing(double* grid, int N_gridpoints) {
     double t;
     double b;
 
+    uint64_t init_seed = threadIdx.x;
+    uint64_t n = 4238811;
+
     while (true) {
+        // Generate random seed
+        uint64_t seed = fast_forward_LCG(init_seed, n);
+        
         // sample random v from unit sphere
-        V = direction_sampling();
+        V = direction_sampling(seed);
         W = vec_scale(V, Wy / V.y);
         bool condition = abs(W.x) < w_max && abs(W.z) < w_max && pow(vec_dotp(V, C), 2) + r*r - vec_dotp(C, C) > 0;
         if (condition) {
             break;
         }
+        init_seed = seed;
     }
 
     t = vec_dotp(V,C) - sqrt(pow(vec_dotp(V,C), 2) + r*r - vec_dotp(C, C));
@@ -151,9 +181,9 @@ __global__ void ray_tracing(double* grid, int N_gridpoints) {
     b = max(0.0, vec_dotp(S, N));
 
     // Compute the grid point indices
-    int i = (W.z + w_max) / (2*w_max) * N_gridpoints;
-    int j = (W.x + w_max) / (2*w_max) * N_gridpoints;
-    int idx_1d_local = i * N_gridpoints + j;
+    int i = (W.z + w_max) / (2*w_max) * (*N_gridpoints);
+    int j = (W.x + w_max) / (2*w_max) * (*N_gridpoints);
+    int idx_1d_local = i * (*N_gridpoints) + j;
 
     // Update the grid point
     atomicAdd(&grid[idx_1d_local], b);
@@ -205,7 +235,7 @@ int main(int argc, char** argv) {
     cudaEventRecord(start_device, 0);  
     
     // Perform simulation
-    ray_tracing<<<n_blocks, n_threads_per_block>>>(grid_device, *N_gridpoints_device);
+    ray_tracing<<<n_blocks, n_threads_per_block>>>(grid_device, N_gridpoints_device);
 
     // Stop timer
     cudaEventRecord(stop_device, 0);
@@ -231,3 +261,4 @@ int main(int argc, char** argv) {
     return 0;
 
 }
+
