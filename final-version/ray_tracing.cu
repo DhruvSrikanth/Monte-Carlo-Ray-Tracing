@@ -56,12 +56,12 @@ __device__ Point vec_direction(Point p1, Point p2) {
     return res;
 }
 
-__device__ double LCG_random_double(uint64_t* seed) {
+__device__ double LCG_random_double(uint64_t& seed) {
     const uint64_t m = 9223372036854775808ULL; // 2ˆ63
     const uint64_t a = 2806196910506780709ULL;
     const uint64_t c = 1ULL;
-    *seed = (a * (*seed) + c ) % m;
-    return (double) (*seed ) / (double) m;
+    seed = (a * seed + c ) % m;
+    return (double) (seed) / (double) m;
 }
 
 __device__ uint64_t fast_forward_LCG(uint64_t seed, uint64_t n) {
@@ -83,11 +83,11 @@ __device__ uint64_t fast_forward_LCG(uint64_t seed, uint64_t n) {
     return (a_new * seed + c_new) % m;
 }
 
-__device__ Point direction_sampling(uint64_t seed) {
+__device__ Point direction_sampling(uint64_t& seed) {
     Point V;
 
-    double phi = 2*M_PI*LCG_random_double(&seed); // 0 ~ 2*pi
-    double cos_theta = 2*LCG_random_double(&seed) - 1; // -1 ~ 1
+    double phi = 2*M_PI*LCG_random_double(seed); // 0 ~ 2*pi
+    double cos_theta = 2*LCG_random_double(seed) - 1; // -1 ~ 1
     double sin_theta = sqrt(1 - pow(cos_theta, 2));
     
     V.x = sin_theta * cos(phi);
@@ -157,8 +157,9 @@ __global__ void ray_tracing(double* grid, int* N_gridpoints) {
     double t;
     double b;
 
-    uint64_t init_seed = threadIdx.x;
-    uint64_t n = 4238811;
+    uint64_t init_seed = 1;
+    uint64_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+    uint64_t n = 200 * tid;
 
     while (true) {
         // Generate random seed
@@ -261,4 +262,3 @@ int main(int argc, char** argv) {
     return 0;
 
 }
-
