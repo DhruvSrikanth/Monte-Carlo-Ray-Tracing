@@ -7,93 +7,25 @@ using namespace std;
 #include<cuda.h>
 #include<cuda_runtime.h>
 
+// Maximum number of blocks in a device grid (for dim x)
 #define MAX_BLOCKS 2147483647
+
+// Min function
 #define MIN(a,b) (((a)<(b))?(a):(b))
 
+// Data structure for a point
 struct Point {
+    // x, y, z coordinates
     double x;
     double y;
     double z;
 };
 
+// HOST FUNCTIONS
+
 void print_point(Point p) {
     // Print the point
     cout << "(" << p.x << ", " << p.y << ", " << p.z << ")" << endl;
-}
-
-__device__ Point vec_add(Point p1, Point p2) {
-    // Add two vectors
-    Point res;
-    res.x = p1.x + p2.x;
-    res.y = p1.y + p2.y;
-    res.z = p1.z + p2.z;
-    return res;
-}
-
-__device__ Point vec_scale(Point p, double scale) {
-    // Scale a vector
-    Point res;
-    res.x = p.x * scale;
-    res.y = p.y * scale;
-    res.z = p.z * scale;
-    return res;
-}
-
-__device__ double vec_dotp(Point p1, Point p2) {
-    // Dot product of two vectors
-    double res;
-    res = p1.x * p2.x + p1.y * p2.y + p1.z * p2.z;
-    return res;
-}
-
-__device__ Point vec_direction(Point p1, Point p2) {
-    // Direction of p2 from p1
-    Point res;
-    double magnitude = sqrt(pow(p2.x - p1.x, 2) + pow(p2.y - p1.y, 2) + pow(p2.z - p1.z, 2));
-    res.x = (p2.x - p1.x) / magnitude;
-    res.y = (p2.y - p1.y) / magnitude;
-    res.z = (p2.z - p1.z) / magnitude;
-    return res;
-}
-
-__device__ double LCG_random_double(uint64_t& seed) {
-    const uint64_t m = 9223372036854775808ULL; // 2ˆ63
-    const uint64_t a = 2806196910506780709ULL;
-    const uint64_t c = 1ULL;
-    seed = (a * seed + c ) % m;
-    return (double) (seed) / (double) m;
-}
-
-__device__ uint64_t fast_forward_LCG(uint64_t seed, uint64_t n) {
-    const uint64_t m = 9223372036854775808ULL; // 2ˆ63
-    uint64_t a = 2806196910506780709ULL;
-    uint64_t c = 1ULL;
-    n = n % m;
-    uint64_t a_new = 1;
-    uint64_t c_new = 0;
-    while (n >0) {
-        if (n & 1) {
-            a_new *= a;
-            c_new = c_new * a + c;
-        }
-        c *= ( a + 1);
-        a *= a;
-        n >>= 1;
-    }
-    return (a_new * seed + c_new) % m;
-}
-
-__device__ Point direction_sampling(uint64_t& seed) {
-    Point V;
-
-    double phi = 2*M_PI*LCG_random_double(seed); // 0 ~ 2*pi
-    double cos_theta = 2*LCG_random_double(seed) - 1; // -1 ~ 1
-    double sin_theta = sqrt(1 - pow(cos_theta, 2));
-    
-    V.x = sin_theta * cos(phi);
-    V.y = sin_theta * sin(phi);
-    V.z = cos_theta;
-    return V;
 }
 
 void write_to_file(double* output, string filename, int N, int NT) { 
@@ -143,6 +75,88 @@ void create_contiguous_2d_array(double* mat, int N) {
     }
 }
 
+// DEVICE FUNCTIONS
+
+__device__ Point vec_add(Point p1, Point p2) {
+    // Add two vectors
+    Point res;
+    res.x = p1.x + p2.x;
+    res.y = p1.y + p2.y;
+    res.z = p1.z + p2.z;
+    return res;
+}
+
+__device__ Point vec_scale(Point p, double scale) {
+    // Scale a vector
+    Point res;
+    res.x = p.x * scale;
+    res.y = p.y * scale;
+    res.z = p.z * scale;
+    return res;
+}
+
+__device__ double vec_dotp(Point p1, Point p2) {
+    // Dot product of two vectors
+    double res;
+    res = p1.x * p2.x + p1.y * p2.y + p1.z * p2.z;
+    return res;
+}
+
+__device__ Point vec_direction(Point p1, Point p2) {
+    // Direction of p2 from p1
+    Point res;
+    double magnitude = sqrt(pow(p2.x - p1.x, 2) + pow(p2.y - p1.y, 2) + pow(p2.z - p1.z, 2));
+    res.x = (p2.x - p1.x) / magnitude;
+    res.y = (p2.y - p1.y) / magnitude;
+    res.z = (p2.z - p1.z) / magnitude;
+    return res;
+}
+
+__device__ double LCG_random_double(uint64_t& seed) {
+    // Generate a random number between 0 and 1 from a uniform distribution
+    const uint64_t m = 9223372036854775808ULL; // 2ˆ63
+    const uint64_t a = 2806196910506780709ULL;
+    const uint64_t c = 1ULL;
+    seed = (a * seed + c ) % m;
+    return (double) (seed) / (double) m;
+}
+
+__device__ uint64_t fast_forward_LCG(uint64_t seed, uint64_t n) {
+    // Fast forward the LCG by n steps
+    const uint64_t m = 9223372036854775808ULL; // 2ˆ63
+    uint64_t a = 2806196910506780709ULL;
+    uint64_t c = 1ULL;
+    n = n % m;
+    uint64_t a_new = 1;
+    uint64_t c_new = 0;
+    while (n >0) {
+        if (n & 1) {
+            a_new *= a;
+            c_new = c_new * a + c;
+        }
+        c *= ( a + 1);
+        a *= a;
+        n >>= 1;
+    }
+    return (a_new * seed + c_new) % m;
+}
+
+__device__ Point direction_sampling(uint64_t& seed) {
+    // Generate a random ray
+    Point V;
+
+    // Sample point for respective distributions
+    double phi = 2*M_PI*LCG_random_double(seed); // 0 ~ 2*pi
+    double cos_theta = 2*LCG_random_double(seed) - 1; // -1 ~ 1
+    double sin_theta = sqrt(1 - pow(cos_theta, 2));
+    
+    V.x = sin_theta * cos(phi);
+    V.y = sin_theta * sin(phi);
+    V.z = cos_theta;
+
+    return V;
+}
+
 __global__ void ray_tracing(double* grid, int* N_gridpoints) {
     // Initialize points
     Point W, V, I, N, S;
@@ -154,6 +168,7 @@ __global__ void ray_tracing(double* grid, int* N_gridpoints) {
     double r = 6.0;
     double Wy = 10.0;
 
+    // Initialize variables
     double t;
     double b;
 
@@ -212,7 +227,7 @@ int main(int argc, char** argv) {
     double* grid = new double[N_gridpoints*N_gridpoints];
     create_contiguous_2d_array(grid, N_gridpoints*N_gridpoints);
 
-    // Allocate memory for the number of rays, grid points, and grid
+    // Allocate memory for the number of grid points and the grid
     double* grid_device;
     int* N_gridpoints_device;
 
@@ -222,7 +237,6 @@ int main(int argc, char** argv) {
     // Copy the params to the device
     cudaMemcpy(grid_device, grid, N_gridpoints*N_gridpoints*sizeof(double), cudaMemcpyHostToDevice);
     cudaMemcpy(N_gridpoints_device, &N_gridpoints, sizeof(int), cudaMemcpyHostToDevice);
-    
 
     // CUDA timer
     cudaEvent_t start_device, stop_device;  
@@ -242,22 +256,25 @@ int main(int argc, char** argv) {
     cudaEventRecord(stop_device, 0);
     cudaEventSynchronize(stop_device);
     cudaEventElapsedTime(&time_device, start_device, stop_device);
-    cout << "Grind Rate: " << N_rays / floor(1e3/time_device) << " rays/sec" << endl;
 
-    // Release the memory for the timer
-    cudaEventDestroy(start_device);
-    cudaEventDestroy(stop_device);
+    // Print out metrics
+    cout << "Grind Rate: " << N_rays / floor(1e3/time_device) << " rays/sec" << endl; 
+    cout << "Time: " << time_device << " ms" << endl;
     
     // Copy the grid from the device to the host
     cudaMemcpy(grid, grid_device, N_gridpoints*N_gridpoints*sizeof(double), cudaMemcpyDeviceToHost);
 
+    // Release the memory for the timer
+    cudaEventDestroy(start_device);
+    cudaEventDestroy(stop_device);
+
     // Write to file
     write_to_file(grid, "./output/output.txt", N_gridpoints*N_gridpoints, N_rays-1);
 
-    // Release the memory for the grid, the number of rays, and the number of grid points
-    cudaFree(grid_device); // Free the memory for the grid on the device
+    // Release the memory for the grid and the number of grid points
+    cudaFree(grid_device);
     cudaFree(N_gridpoints_device);
-    delete[] grid; // Free the memory for the grid on the host
+    delete[] grid;
 
     return 0;
 
