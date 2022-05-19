@@ -58,7 +58,7 @@ The outputs can be found in the **milestone-1/output** directory.
 
 ![render_serial](../milestone-1/output/output.png)
 
-# Milestone 1 - Parallel GPU Implementation
+# Final Version - Parallel GPU Implementation
 
 The purpose of this portion of the project is to develop a parallel, gpu-based algorithm for ray tracing. 
 
